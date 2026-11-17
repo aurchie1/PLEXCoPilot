@@ -1,0 +1,43 @@
+{
+    "version": "v1.8",
+    "name": "PLEX Claims Assistant${{APP_NAME_SUFFIX}}",
+    "description": "Gets the next GAP or AUTH claim from the PLEX work queue, shows claim status and bucket, and applies status transitions.",
+    "instructions": "$[file('instruction.txt')]",
+    "capabilities": [
+        {
+            "name": "OneDriveAndSharePoint",
+            "items_by_url": [
+                { "url": "https://dvagov.sharepoint.com/sites/PLEX" }
+            ]
+        }
+    ],
+    "conversation_starters": [
+        {
+            "title": "Next GAP claim",
+            "text": "Get my next GAP claim"
+        },
+        {
+            "title": "Next AUTH claim",
+            "text": "Get my next AUTH claim"
+        },
+        {
+            "title": "Claim status",
+            "text": "What is the status and bucket of this claim?"
+        },
+        {
+            "title": "Authorize claim",
+            "text": "Authorize my current claim"
+        },
+        {
+            "title": "Return to RVSR",
+            "text": "Return my current claim to the RVSR for correction"
+        }
+    ],
+    "actions": [
+        {
+            "id": "action_1",
+            "file": "ai-plugin.json"
+        }
+    ],
+    "$schema": "https://developer.microsoft.com/json-schemas/copilot/declarative-agent/v1.8/schema.json"
+}

@@ -1,0 +1,196 @@
+{
+  "version": "1.2.0",
+  "effectiveDate": "2026-11-17",
+  "defaults": {
+    "caseSensitive": false,
+    "trim": true,
+    "matchType": "contains"
+  },
+
+  "termLists": {
+    "als":       ["Amyotrophic Lateral Sclerosis", "ALS"],
+    "bwn":       ["Blue Water Navy", "Blue Water Agent Orange", "BWN", "Nehmer"],
+    "homeless":  ["Homeless"],
+    "sensitive": []
+  },
+
+  "gates": {
+    "isAssigned": {
+      "description": "Claim has been assigned to a PLEX user",
+      "when": { "field": "userId", "notNull": true }
+    },
+    "isGapAssigned":  { "when": { "field": "PL_GAPAssigned", "notNull": true } },
+    "isAuthAssigned": { "when": { "field": "PL_AUTHAssigned", "notNull": true } }
+  },
+
+  "fields": {
+    "PL_ALS": {
+      "source": "derived",
+      "phase": "enrich",
+      "description": "Veteran has ALS flash or special issue",
+      "when": { "any": [
+        { "field": "veteran.veteranFlash", "containsAny": "@als", "matchType": "word" },
+        { "field": "specialIssues",        "containsAny": "@als", "matchType": "word" }
+      ]},
+      "then": true,
+      "else": false
+    },
+
+    "PL_BWN": {
+      "source": "derived",
+      "phase": "enrich",
+      "when": { "any": [
+        { "field": "veteran.veteranFlash", "containsAny": "@bwn" },
+        { "field": "specialIssues",        "containsAny": "@bwn" },
+        { "field": "specialMission",       "containsAny": "@bwn" }
+      ]},
+      "then": true,
+      "else": false
+    },
+
+    "PL_Homeless": {
+      "source": "derived",
+      "phase": "enrich",
+      "when": { "field": "veteran.veteranFlash", "containsAny": "@homeless" },
+      "then": true,
+      "else": false
+    },
+
+    "PL_Backlog": {
+      "source": "derived",
+      "phase": "enrich",
+      "description": "Pending more than 125 days",
+      "when": { "field": "daysPending", "gt": 125 },
+      "then": true,
+      "else": false
+    },
+
+    "PL_Sensitive": {
+      "source": "derived",
+      "phase": "enrich",
+      "mode": "firstMatch",
+      "cases": [
+        { "when": { "field": "veteran.veteranFlash", "containsAny": ["Employee Claim"] }, "then": "7" },
+        { "when": { "field": "veteran.veteranFlash", "containsAny": "@sensitive" },       "then": "6" }
+      ],
+      "else": "0"
+    },
+
+    "PL_Excluded": {
+      "source": "flow",
+      "description": "Set only by the ExcludeClaim adaptive card; null until then",
+      "writers": ["card:ExcludeClaim"],
+      "targets": ["PL_Excluded", "PL_ExcludedReason"],
+      "onIngest": "$keep",
+      "initial": [null, null]
+    },
+
+    "PL_reworkIndicated": {
+      "source": "flow",
+      "description": "Set on entering a rework state (RVSRCorrection, AwardCorrection)",
+      "writers": ["stateMachine:PL_assignmentStatus"],
+      "onIngest": "$keep",
+      "initial": null
+    },
+
+    "PL_reworkCount": {
+      "source": "flow",
+      "description": "Incremented on each entry into a rework state",
+      "writers": ["stateMachine:PL_assignmentStatus"],
+      "onIngest": "$keep",
+      "initial": null
+    },
+
+    "PL_currentStatusTime": {
+      "source": "flow",
+      "description": "Timestamp of the last PL_assignmentStatus change",
+      "writers": ["stateMachine:PL_assignmentStatus"],
+      "onIngest": "$keep",
+      "initial": null
+    },
+
+    "PL_assignmentStatus": {
+      "source": "stateMachine",
+      "machine": "assignmentStatus",
+      "onIngest": "applyIngestionTransitions",
+      "initial": null
+    },
+
+    "PL_GAPAssigned":   { "source": "manual", "gate": "isAssigned" },
+    "PL_AUTHAssigned":  { "source": "manual", "gate": "isAssigned" },
+    "PL_GAPerOfRecord": { "source": "manual", "gate": "isGapAssigned" },
+    "PL_GappedByTeam":  { "source": "manual", "gate": "isGapAssigned" },
+    "PL_AuthOfRecord":  { "source": "manual", "gate": "isAuthAssigned" },
+    "PL_AuthByTeam":    { "source": "manual", "gate": "isAuthAssigned" }
+  },
+
+  "stateMachines": {
+    "assignmentStatus": {
+      "skipIngestionWhen": { "field": "PL_Excluded", "equals": true },
+
+      "states": {
+        "PendingAward":    { "label": "Pending Award" },
+        "RVSRCorrection":  { "label": "RVSR Correction",  "isRework": true },
+        "PendingAuth":     { "label": "Pending Authorization" },
+        "AwardCorrection": { "label": "Award Correction", "isRework": true },
+        "PendingConcur":   { "label": "Pending Concurrence", "description": "Entered only when an authorizer indicates concurrence is required" },
+        "ContinuedAtAuth": { "label": "Continued at Authorization", "terminal": true, "description": "Exits workflow; resumed later as a new cycle with no retained state" },
+        "Closed":          { "label": "Closed", "terminal": true }
+      },
+
+      "onEnter": {
+        "*":        { "set": { "PL_currentStatusTime": "$now" }, "appendHistory": true },
+        "isRework": { "set": { "PL_reworkIndicated": true }, "increment": { "PL_reworkCount": 1 } }
+      },
+
+      "reentry": {
+        "fromStates": ["ContinuedAtAuth", "Closed"],
+        "by": ["ingestion"],
+        "when": { "any": [
+          { "state": "returned" },
+          { "changed": "id" },
+          { "changed": "lifecyclePhase" }
+        ]},
+        "reset": [
+          "PL_assignmentStatus",
+          "PL_currentStatusTime",
+          "PL_reworkIndicated",
+          "PL_reworkCount",
+          "PL_Excluded",
+          "PL_ExcludedReason",
+          "PL_GAPAssigned",
+          "PL_AUTHAssigned",
+          "PL_GAPerOfRecord",
+          "PL_GappedByTeam",
+          "PL_AuthOfRecord",
+          "PL_AuthByTeam"
+        ],
+        "then": "applyIngestionTransitions"
+      },
+
+      "transitions": [
+        { "from": null,              "to": "PendingAward",    "by": ["ingestion"], "when": { "field": "lifecyclePhase", "equals": "Awaiting Award" } },
+        { "from": null,              "to": "PendingAuth",     "by": ["ingestion"], "when": { "field": "lifecyclePhase", "equals": "Awaiting Authorization" } },
+        { "from": "PendingAward",    "to": "PendingAuth",     "by": ["ingestion", "flow"], "when": { "field": "lifecyclePhase", "equals": "Awaiting Authorization" } },
+
+        { "from": "PendingAward",    "to": "RVSRCorrection",  "by": ["flow"], "card": "ReturnToRVSR" },
+        { "from": "PendingAuth",     "to": "RVSRCorrection",  "by": ["flow"], "card": "ReturnToRVSR" },
+        { "from": "RVSRCorrection",  "to": "PendingAward",    "by": ["flow"], "card": "CorrectionComplete" },
+
+        { "from": "PendingAuth",     "to": "AwardCorrection", "by": ["flow"], "card": "ReturnForAwardCorrection" },
+        { "from": "AwardCorrection", "to": "PendingAuth",     "by": ["flow"], "card": "CorrectionComplete" },
+
+        { "from": "PendingAuth",     "to": "PendingConcur",   "by": ["flow"], "card": "Authorize", "when": { "input": "requiresConcurrence", "equals": true } },
+        { "from": "PendingAuth",     "to": "Closed",          "by": ["flow"], "card": "Authorize", "when": { "input": "requiresConcurrence", "equals": false } },
+        { "from": "PendingConcur",   "to": "Closed",          "by": ["flow"], "card": "ConcurApproved" },
+        { "from": "PendingConcur",   "to": "PendingAuth",     "by": ["flow"], "card": "ConcurDenied" },
+        { "from": "PendingConcur",   "to": "RVSRCorrection",  "by": ["flow"], "card": "ReturnToRVSR" },
+        { "from": "PendingConcur",   "to": "AwardCorrection", "by": ["flow"], "card": "ReturnForAwardCorrection" },
+
+        { "from": "PendingAuth",     "to": "ContinuedAtAuth", "by": ["flow"], "card": "ContinueAtAuth" },
+
+        { "from": "*",               "to": "Closed",          "by": ["ingestion"], "when": { "state": "missing" }, "excludeTerminal": true }
+      ]
+    }
+  }
+}

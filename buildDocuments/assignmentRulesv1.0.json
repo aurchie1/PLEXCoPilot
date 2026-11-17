@@ -1,0 +1,147 @@
+{
+  "version": "1.0.0",
+  "extends": "rulesv1.2.json",
+  "effectiveDate": "2026-11-17",
+  "defaults": {
+    "caseSensitive": false,
+    "trim": true,
+    "matchType": "contains"
+  },
+
+  "termLists": {
+    "purpleHeart": ["Purple Heart"],
+    "terminal":    ["Terminally Ill"],
+    "attyFee":     ["Private Attorney - Fees Payable", "Potential Attorney Fee"]
+  },
+
+  "fields": {
+    "PL_PurpleHeartOriginal": {
+      "source": "derived",
+      "phase": "enrich",
+      "description": "Original claim (EP 110 or 010) for a Purple Heart veteran",
+      "when": { "all": [
+        { "field": "epCode", "in": ["110", "010"], "matchType": "equals" },
+        { "any": [
+          { "field": "veteran.veteranFlash", "containsAny": "@purpleHeart" },
+          { "field": "specialIssues",        "containsAny": "@purpleHeart" }
+        ]}
+      ]},
+      "then": true,
+      "else": false
+    },
+
+    "PL_Terminal": {
+      "source": "derived",
+      "phase": "enrich",
+      "when": { "field": "veteran.veteranFlash", "containsAny": "@terminal" },
+      "then": true,
+      "else": false
+    },
+
+    "PL_AttyFee": {
+      "source": "derived",
+      "phase": "enrich",
+      "description": "Attorney fee claim (EP 400 Attorney Fee Memo, or attorney fee flash)",
+      "when": { "any": [
+        { "field": "epClaimLabel",         "equals": "Attorney Fee Memo" },
+        { "field": "veteran.veteranFlash", "containsAny": "@attyFee" }
+      ]},
+      "then": true,
+      "else": false
+    }
+  },
+
+  "assignment": {
+    "description": "Claims are chosen by bucket order first, then by sortWithinBucket inside the bucket.",
+
+    "eligibility": {
+      "description": "Excluded, closed, sensitive-restricted or already-assigned claims never enter any bucket",
+      "excludeWhen": { "any": [
+        { "field": "PL_Excluded",         "equals": true },
+        { "field": "PL_assignmentStatus", "in": ["Closed", "ContinuedAtAuth"], "matchType": "equals" }
+      ]}
+    },
+
+    "sortWithinBucket": [
+      { "field": "daysAssignedToRO", "direction": "desc", "nullsLast": true },
+      { "field": "dateOfClaim",      "direction": "asc",  "nullsLast": true, "description": "Tiebreaker: oldest date of claim first" },
+      { "field": "claimId",          "direction": "asc",  "description": "Final deterministic tiebreaker" }
+    ],
+
+    "selection": {
+      "mode": "firstMatch",
+      "description": "Walk buckets in order; take the next claim from the lowest-numbered bucket that has an eligible claim for the requesting user. A claim belongs to exactly one bucket (its first match), so no claim is counted or surfaced twice.",
+      "alwaysSelectedBuckets": {
+        "allowed": false,
+        "description": "Bucket predicates must stay narrow. A bucket must not be defined broadly enough that it permanently starves later buckets.",
+        "maxClaimsPerRequest": {
+          "default": 1,
+          "description": "Limit on claims taken from one bucket in a single request before the next bucket is evaluated; raise only per bucket and by explicit config",
+          "perBucket": { "1": null, "2": null, "3": null, "4": null, "5": null, "6": null }
+        }
+      }
+    },
+
+    "buckets": [
+      {
+        "priority": 1,
+        "id": "ALS_PH_Terminal_Homeless",
+        "label": "ALS, Original Purple Heart [110, 010], Terminal, Homeless",
+        "when": { "any": [
+          { "field": "PL_ALS",                "equals": true },
+          { "field": "PL_PurpleHeartOriginal","equals": true },
+          { "field": "PL_Terminal",           "equals": true },
+          { "field": "PL_Homeless",           "equals": true }
+        ]},
+        "eligibleUsers": "anyone"
+      },
+      {
+        "priority": 2,
+        "id": "Backlog",
+        "label": "Backlogged claims pending > 125 days",
+        "when": { "field": "PL_Backlog", "equals": true },
+        "eligibleUsers": "anyone"
+      },
+      {
+        "priority": 3,
+        "id": "BWN",
+        "label": "BWN claims",
+        "when": { "field": "PL_BWN", "equals": true },
+        "eligibleUsers": "anyone"
+      },
+      {
+        "priority": 4,
+        "id": "AwardReturn",
+        "label": "Claims returned for award correction go back to the GAPer and AUTHer of record",
+        "when": { "field": "PL_assignmentStatus", "equals": "AwardCorrection" },
+        "eligibleUsers": {
+          "byPhase": {
+            "gap":  { "userIs": "PL_GAPerOfRecord" },
+            "auth": { "userIs": "PL_AuthOfRecord" }
+          },
+          "description": "Only the recorded GAPer (GAP work) or recorded AUTHer (authorization work) may select the claim. When both PL_GAPerOfRecord and PL_AuthOfRecord are empty, the claim is available for assignment to anyone."
+        }
+      },
+      {
+        "priority": 5,
+        "id": "AttyFee",
+        "label": "Atty fee claims",
+        "when": { "field": "PL_AttyFee", "equals": true },
+        "eligibleUsers": {
+          "byPhase": {
+            "gap":  "anyone",
+            "auth": { "userHasRole": "AttyFeeAuthorizer" }
+          },
+          "description": "Anyone can GAP an atty fee claim; only Atty Fee Authorizers can authorize it."
+        }
+      },
+      {
+        "priority": 6,
+        "id": "AllOther",
+        "label": "All other claims",
+        "when": { "always": true },
+        "eligibleUsers": "anyone"
+      }
+    ]
+  }
+}

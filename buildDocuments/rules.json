@@ -1,0 +1,161 @@
+{
+  "version": "1.0.0",
+  "effectiveDate": "2026-11-17",
+  "defaults": {
+    "caseSensitive": false,
+    "trim": true,
+    "matchType": "contains"
+  },
+
+  "termLists": {
+    "als":       ["Amyotrophic Lateral Sclerosis", "ALS"],
+    "bwn":       ["Blue Water Navy", "Blue Water Agent Orange", "BWN", "Nehmer"],
+    "homeless":  ["Homeless"]
+    
+  },
+
+  "gates": {
+    "isAssigned": {
+      "description": "Claim has been assigned to a PLEX user",
+      "when": { "field": "userId", "notNull": true }
+    },
+    "isGapAssigned":  { "when": { "field": "PL_GAPAssigned", "notNull": true } },
+    "isAuthAssigned": { "when": { "field": "PL_AUTHAssigned", "notNull": true } }
+  },
+
+  "fields": {
+    "PL_ALS": {
+      "source": "derived",
+      "phase": "enrich",
+      "description": "Veteran has ALS flash or special issue",
+      "when": { "any": [
+        { "field": "veteran.veteranFlash", "containsAny": "@als", "matchType": "word" },
+        { "field": "specialIssues",        "containsAny": "@als", "matchType": "word" }
+      ]},
+      "then": true,
+      "else": false
+    },
+
+    "PL_BWN": {
+      "source": "derived",
+      "phase": "enrich",
+      "when": { "any": [
+        { "field": "veteran.veteranFlash", "containsAny": "@bwn" },
+        { "field": "specialIssues",        "containsAny": "@bwn" },
+        { "field": "specialMission",       "containsAny": "@bwn" }
+      ]},
+      "then": true,
+      "else": false
+    },
+
+    "PL_Homeless": {
+      "source": "derived",
+      "phase": "enrich",
+      "when": { "field": "veteran.veteranFlash", "containsAny": "@homeless" },
+      "then": true,
+      "else": false
+    },
+
+    "PL_Backlog": {
+      "source": "derived",
+      "phase": "enrich",
+      "description": "Pending more than 125 days",
+      "when": { "field": "daysPending", "gt": 125 },
+      "then": true,
+      "else": false
+    },
+
+    "PL_Sensitive": {
+      "source": "derived",
+      "phase": "enrich",
+      "mode": "firstMatch",
+      "cases": [
+        { "when": { "field": "veteran.veteranFlash", "containsAny": ["Employee Claim"] }, "then": "7" },
+        { "when": { "field": "veteran.veteranFlash", "containsAny": "@sensitive" },       "then": "6" }
+      ],
+      "else": "0"
+    },
+
+    "PL_Excluded": {
+      "source": "derived",
+      "phase": "enrich",
+      "mode": "firstMatch",
+      "targets": ["PL_Excluded", "PL_ExcludedReason"],
+      "cases": [
+        { "when": { "field": "ratingLockedBy", "notNull": true },              "then": [true, "Rating locked"] },
+        { "when": { "field": "brokered", "equals": true },                     "then": [true, "Brokered"] },
+        { "when": { "field": "suspense.reason", "equals": "Pending Authorization" }, "then": [true, "Awaiting authorization"] }
+      ],
+      "else": [false, null]
+    },
+
+    "PL_inOrOut": {
+      "source": "stateful",
+      "phase": "reconcile",
+      "mode": "firstMatch",
+      "cases": [
+        { "when": { "state": "new" },     "then": "IN" },
+        { "when": { "state": "missing" }, "then": "OUT" }
+      ],
+      "else": "$keep"
+    },
+
+    "PL_currentStatusTime": {
+      "source": "stateful",
+      "phase": "reconcile",
+      "when": { "any": [
+        { "state": "new" },
+        { "state": "missing" },
+        { "changed": "lifecyclePhase" }
+      ]},
+      "then": "$now",
+      "else": "$keep"
+    },
+
+    "PL_reworkIndicated": {
+      "source": "stateful",
+      "phase": "reconcile",
+      "gate": "isAssigned",
+      "when": { "transition": {
+        "field": "lifecyclePhase",
+        "from": ["Awaiting Authorization", "Awaiting Award"],
+        "to":   ["Awaiting Decision", "Gathering Evidence"]
+      }},
+      "then": true,
+      "else": "$keep",
+      "onGateFail": null
+    },
+
+    "PL_reworkCount": {
+      "source": "stateful",
+      "phase": "reconcile",
+      "gate": "isAssigned",
+      "when": { "ref": "PL_reworkIndicated", "becameTrue": true },
+      "then": { "increment": 1, "seed": 0 },
+      "else": "$keep",
+      "onGateFail": null
+    },
+
+    "PL_assignmentStatus": {
+      "source": "stateful",
+      "phase": "reconcile",
+      "gate": "isAssigned",
+      "mode": "firstMatch",
+      "cases": [
+        { "when": { "field": "PL_AUTHAssignedflag", "notNull": true }, "then": "7" },
+        { "when": { "field": "PL_GAPAssigned",      "notNull": true }, "then": "6" }
+      ],
+      "else": "0",
+      "onGateFail": null
+    },
+
+    "PL_currentState":     { "source": "stateful", "phase": "reconcile", "gate": "isAssigned", "onGateFail": null, "todo": "define rule" },
+
+    "PL_GAPAssigned":      { "source": "manual", "gate": "isAssigned" },
+    "PL_AUTHAssignedflag": { "source": "manual", "gate": "isAssigned" },
+    "PL_GAPerOfRecord":    { "source": "manual", "gate": "isGapAssigned" },
+    "PL_GappedByTeam":     { "source": "manual", "gate": "isGapAssigned" },
+    "PL_AuthOfRecord":     { "source": "manual", "gate": "isAuthAssigned" },
+    "PL_AuthByTeam":       { "source": "manual", "gate": "isAuthAssigned" }
+  }
+}

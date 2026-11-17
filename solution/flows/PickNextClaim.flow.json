@@ -1,0 +1,58 @@
+{
+  "name": "PLEX - Pick Next Claim",
+  "description": "Implements assignmentRulesv1.0.json selection. Called by the Power App and by the PLEX agent. Bucket order first, then DaysAssignedToRO desc, DateOfClaim asc, ClaimId asc.",
+  "trigger": {
+    "type": "PowerAppV2 / Request (When an agent calls the flow)",
+    "inputs": { "userEmail": "string", "userDisplayName": "string", "phase": "string: gap | auth" }
+  },
+  "outputs": { "claimId": "string", "assignmentId": "string", "bucket": "number", "bucketLabel": "string", "found": "boolean" },
+  "actions": [
+    {
+      "id": "Get_user_roles",
+      "connector": "SharePoint - Get items",
+      "list": "PLEX_Users",
+      "filter": "UserEmail eq '@{triggerBody()?['userEmail']}'",
+      "top": 1
+    },
+    {
+      "id": "Get_per_bucket_caps",
+      "connector": "SharePoint - Get items",
+      "list": "PLEX_Config",
+      "note": "Reads MaxPerRequestDefault and MaxPerRequestBucket1..6. A blank bucket cap uses the default."
+    },
+    {
+      "id": "Select_candidate",
+      "connector": "SharePoint - Get items",
+      "list": "PLEX_ClaimAssignments",
+      "filter": [
+        "PL_Excluded ne 1",
+        "PL_assignmentStatus ne 'Closed' and PL_assignmentStatus ne 'ContinuedAtAuth'",
+        "UserId eq null",
+        "(PL_Bucket ne 4 or PL_GAPerOfRecord eq '@{triggerBody()?['userEmail']}' or PL_AuthOfRecord eq '@{triggerBody()?['userEmail']}' or (PL_GAPerOfRecord eq null and PL_AuthOfRecord eq null))",
+        "(PL_Bucket ne 5 or '@{triggerBody()?['phase']}' eq 'gap' or '@{first(outputs('Get_user_roles')?['body/value'])?['IsAttyFeeAuthorizer']}' eq 'true')"
+      ],
+      "orderBy": "PL_Bucket asc, DaysAssignedToRO desc, DateOfClaim asc, ClaimId asc",
+      "top": 1,
+      "note": "PL_Bucket is stored by EnrichClaim, so one indexed ORDER BY gives bucket first, then days desc. Filters keep bucket 4 to the GAPer/AUTHer of record and bucket 5 AUTH to AttyFeeAuthorizer users."
+    },
+    {
+      "id": "Enforce_bucket_cap",
+      "type": "Condition",
+      "expression": "claims already taken from this bucket in the request < cap(bucket)",
+      "ifFalse": "Re-query with PL_Bucket gt <capped bucket> so the next bucket is evaluated instead of one bucket always being selected."
+    },
+    {
+      "id": "Assign_claim",
+      "connector": "SharePoint - Update item",
+      "list": "PLEX_ClaimAssignments",
+      "set": {
+        "UserId": "@{triggerBody()?['userEmail']}",
+        "AssignedTo": "@{triggerBody()?['userDisplayName']}",
+        "PL_GAPAssigned": "@{if(equals(triggerBody()?['phase'],'gap'), triggerBody()?['userEmail'], item()?['PL_GAPAssigned'])}",
+        "PL_AUTHAssigned": "@{if(equals(triggerBody()?['phase'],'auth'), triggerBody()?['userEmail'], item()?['PL_AUTHAssigned'])}"
+      },
+      "concurrency": "Re-read the item ETag and retry once so two users cannot get the same claim"
+    },
+    { "id": "Respond", "connector": "Respond to PowerApp or flow", "returns": ["claimId", "assignmentId", "bucket", "bucketLabel", "found"] }
+  ]
+}

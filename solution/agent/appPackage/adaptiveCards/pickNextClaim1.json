@@ -1,0 +1,30 @@
+{
+    "type": "AdaptiveCard",
+    "$schema": "https://adaptivecards.io/schemas/adaptive-card.json",
+    "version": "1.5",
+    "body": [
+        {
+            "type": "TextBlock",
+            "text": "${if(found, 'Next claim ' + claimId, 'No eligible claim')}",
+            "weight": "Bolder",
+            "size": "Medium",
+            "wrap": true
+        },
+        {
+            "type": "FactSet",
+            "$when": "${found}",
+            "facts": [
+                { "title": "Claim", "value": "${claimId}" },
+                { "title": "Assignment", "value": "${assignmentId}" },
+                { "title": "Bucket", "value": "${bucket} - ${bucketLabel}" }
+            ]
+        },
+        {
+            "type": "TextBlock",
+            "$when": "${!found}",
+            "text": "Nothing is currently eligible for you in buckets 1 to 6.",
+            "isSubtle": true,
+            "wrap": true
+        }
+    ]
+}

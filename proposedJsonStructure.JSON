@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WorkQueueExport",
+  "type": "object",
+  "required": ["claims", "claimAssignments"],
+  "properties": {
+    "claims":           { "type": "array", "items": { "$ref": "#/$defs/claim" } },
+    "claimAssignments": { "type": "array", "items": { "$ref": "#/$defs/claimAssignment" } }
+  },
+
+  "$defs": {
+    "nullableString":  { "type": ["string", "null"] },
+    "nullableInteger": { "type": ["integer", "null"] },
+    "nullableBoolean": { "type": ["boolean", "null"], "description": "Source TRUE/FALSE or Yes/No" },
+    "nullableDate":    { "type": ["string", "null"], "format": "date", "description": "Source MM/DD/YYYY; emit ISO 8601" },
+    "nullableStringArray": {
+      "type": ["array", "null"],
+      "items": { "type": "string" },
+      "description": "Source comma-delimited; split and trim"
+    },
+
+    "claim": {
+      "type": "object",
+      "required": ["claimId"],
+      "properties": {
+        "claimId":          { "type": "string", "csvColumn": "Claim ID", "description": "Primary key; referenced by claimAssignments.claimId" },
+        "dateOfClaim":      { "$ref": "#/$defs/nullableDate",   "csvColumn": "Date of Claim" },
+        "claimLevelStatus": { "$ref": "#/$defs/nullableString", "csvColumn": "Claim Level Status" },
+        "contentions":      { "$ref": "#/$defs/nullableInteger","csvColumn": "Contentions" },
+        "daysPending":      { "$ref": "#/$defs/nullableInteger","csvColumn": "Days Pending" },
+        "epCode":           { "$ref": "#/$defs/nullableString", "csvColumn": "EP Code", "description": "String to preserve leading zeros" },
+        "epClaimLabel":     { "$ref": "#/$defs/nullableString", "csvColumn": "EP Claim Label" },
+        "lifecyclePhase":   { "$ref": "#/$defs/nullableString", "csvColumn": "Lifecycle Phase" },
+        "workType":         { "$ref": "#/$defs/nullableString", "csvColumn": "Work Type" },
+        "allocationType":   { "$ref": "#/$defs/nullableString", "csvColumn": "Allocation Type" },
+        "specialMission":   { "$ref": "#/$defs/nullableString", "csvColumn": "Special Mission" },
+        "specialIssues":    { "$ref": "#/$defs/nullableStringArray", "csvColumn": "Special Issues" },
+        "priority":         { "$ref": "#/$defs/nullableString", "csvColumn": "Priority" },
+        "vaPriority":       { "$ref": "#/$defs/nullableBoolean","csvColumn": "VA Priority" },
+        "regionalOffice":   { "$ref": "#/$defs/nullableString", "csvColumn": "Regional Office" },
+        "division":         { "$ref": "#/$defs/nullableString", "csvColumn": "Division" },
+
+        "veteran": {
+          "type": "object",
+          "properties": {
+            "name":             { "$ref": "#/$defs/nullableString", "csvColumn": "Veteran Name" },
+            "terminalDigit":    { "$ref": "#/$defs/nullableString", "csvColumn": "Terminal Digit", "description": "String to preserve leading zeros" },
+            "powerOfAttorney":  { "$ref": "#/$defs/nullableString", "csvColumn": "Power of Attorney" },
+            "selfAuthEligible": { "$ref": "#/$defs/nullableBoolean","csvColumn": "Self Auth Eligible" },
+            "flashSummary":     { "$ref": "#/$defs/nullableString", "csvColumn": "Flash Summary" },
+            "veteranFlash":     { "$ref": "#/$defs/nullableStringArray", "csvColumn": "Veteran Flash" }
+          }
+        },
+
+        "documentStatus": {
+          "type": "object",
+          "properties": {
+            "newMail":         { "$ref": "#/$defs/nullableBoolean", "csvColumn": "New Mail" },
+            "pendingScanning": { "$ref": "#/$defs/nullableBoolean", "csvColumn": "Pending Scanning" },
+            "pendingUpload":   { "$ref": "#/$defs/nullableBoolean", "csvColumn": "Pending Upload" }
+          }
+        }
+      }
+    },
+
+    "claimAssignment": {
+      "type": "object",
+      "required": ["id", "claimId"],
+      "properties": {
+        "id":               { "type": "string", "csvColumn": "ID", "description": "Assignment ID" },
+        "claimId":          { "type": "string", "csvColumn": "Claim ID", "description": "Foreign key to claims.claimId" },
+        "assignedTo":       { "$ref": "#/$defs/nullableString", "csvColumn": "Assigned To" },
+        "userId":           { "$ref": "#/$defs/nullableString", "csvColumn": "User ID" },
+        "team":             { "$ref": "#/$defs/nullableString", "csvColumn": "Team" },
+        "assignedLane":     { "$ref": "#/$defs/nullableString", "csvColumn": "Assigned Lane" },
+        "workflowPosition": { "$ref": "#/$defs/nullableString", "csvColumn": "Workflow Position" },
+        "brokered":         { "$ref": "#/$defs/nullableBoolean","csvColumn": "Brokered Flag" },
+        "readyToAssign":    { "$ref": "#/$defs/nullableBoolean","csvColumn": "Ready to Assign" },
+        "readyToRecall":    { "$ref": "#/$defs/nullableBoolean","csvColumn": "Ready to Recall" },
+        "ratingLockedBy":   { "$ref": "#/$defs/nullableString", "csvColumn": "Rating Locked By" },
+        "daysAssignedToUser": { "$ref": "#/$defs/nullableInteger", "csvColumn": "Days Assigned to User" },
+        "daysAssignedToTeam": { "$ref": "#/$defs/nullableInteger", "csvColumn": "Days Assigned to Team" },
+        "daysAssignedToRO":   { "$ref": "#/$defs/nullableInteger", "csvColumn": "Days Assigned to RO" },
+
+        "prior": {
+          "type": "object",
+          "properties": {
+            "assignment": { "$ref": "#/$defs/nullableBoolean", "csvColumn": "Prior Assignment" },
+            "employee":   { "$ref": "#/$defs/nullableString",  "csvColumn": "Prior Employee" },
+            "station":    { "$ref": "#/$defs/nullableString",  "csvColumn": "Prior Station" }
+          }
+        },
+        "grouping": {
+          "type": "object",
+          "properties": {
+            "groupId":          { "$ref": "#/$defs/nullableString", "csvColumn": "Group Id" },
+            "groupDesignation": { "$ref": "#/$defs/nullableString", "csvColumn": "Group Designation" }
+          }
+        },
+        "suspense": {
+          "type": "object",
+          "properties": {
+            "date":           { "$ref": "#/$defs/nullableDate",   "csvColumn": "Suspense Date" },
+            "reason":         { "$ref": "#/$defs/nullableString", "csvColumn": "Suspense Reason" },
+            "reasonComments": { "$ref": "#/$defs/nullableString", "csvColumn": "Suspense Reason Comments" }
+          }
+        },
+        "deferral": {
+          "type": "object",
+          "properties": {
+            "reason":    { "$ref": "#/$defs/nullableString",  "csvColumn": "Deferral Reason" },
+            "avoidable": { "$ref": "#/$defs/nullableBoolean", "csvColumn": "Deferral Avoidable" },
+            "createdByRO":   { "$ref": "#/$defs/nullableString", "csvColumn": "Created By RO" },
+            "createdByUser": { "$ref": "#/$defs/nullableString", "csvColumn": "Created By User" },
+            "causedByRO":    { "$ref": "#/$defs/nullableString", "csvColumn": "Caused By RO" },
+            "causedByUser":  { "$ref": "#/$defs/nullableString", "csvColumn": "Caused By User" }
+          }
+        },
+
+        "PLEX": {
+          "type": "object",
+          "properties": {
+            "PL_assignmentStatus":        { "type": ["string", "null"], "enum": ["PendingAward", "RVSRCorrection", "PendingAuth", "AwardCorrection", "PendingConcur", "ContinuedAtAuth", "Closed", null], "description": "Workflow state; transitions defined in rules stateMachines.assignmentStatus" },
+            "PL_currentStatusTime":        { "type": ["string", "null"], "format": "date-time", "description": "Timestamp of last PL_assignmentStatus change (ISO 8601)" },
+            "PL_GAPAssigned":        { "$ref": "#/$defs/nullableString",      "description": "Free text" },
+            "PL_AUTHAssigned":        { "$ref": "#/$defs/nullableString",      "description": "Free text" },
+            "PL_BWN":        { "$ref": "#/$defs/nullableBoolean",     "description": "true/false" },
+            "PL_ALS":        { "$ref": "#/$defs/nullableBoolean",     "description": "true/false" },
+            "PL_Homeless":        { "$ref": "#/$defs/nullableBoolean",     "description": "true/false" },
+            "PL_Backlog":        { "$ref": "#/$defs/nullableBoolean",     "description": "true/false" },
+            "PL_Excluded":        { "$ref": "#/$defs/nullableBoolean",     "description": "true/false" },
+            "PL_ExcludedReason":        { "$ref": "#/$defs/nullableString",      "description": "Free text" },
+            "PL_reworkIndicated":        { "$ref": "#/$defs/nullableBoolean",     "description": "true/false" },
+            "PL_reworkCount":        { "$ref": "#/$defs/nullableInteger",     "description": "Whole number" },
+            "PL_Sensitive":      { "type": ["string", "null"], "enum": ["0", "6", "7", null], "description": "Fixed set of values" },
+            "PL_GAPerOfRecord":        { "$ref": "#/$defs/nullableString",      "description": "Free text" },
+            "PL_AuthOfRecord":        { "$ref": "#/$defs/nullableString",      "description": "Free text" },
+            "PL_GappedByTeam":        { "$ref": "#/$defs/nullableString",      "description": "Free text" },
+            "PL_AuthByTeam":        { "$ref": "#/$defs/nullableString",      "description": "Free text" }
+     
+            
+            
+           
+          }
+        }
+       }
+      
+    }
+  }
+}
+
+
+

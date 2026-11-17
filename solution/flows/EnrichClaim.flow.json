@@ -1,0 +1,34 @@
+{
+  "name": "PLEX - Enrich Claim",
+  "description": "Runs when a PLEX_ClaimAssignments row is created or modified, and after CSV ingestion. Derives the PL_ flags from rulesv1.2.json + assignmentRulesv1.0.json and stores PL_Bucket. Skips excluded claims.",
+  "trigger": { "type": "SharePoint - When an item is created or modified", "list": "PLEX_ClaimAssignments", "guard": "Trigger condition: @not(equals(triggerOutputs()?['body/PL_Excluded'], true))" },
+  "actions": [
+    { "id": "Get_claim", "connector": "SharePoint - Get items", "list": "PLEX_Claims", "filter": "Title eq '@{triggerOutputs()?['body/ClaimId']}'", "top": 1 },
+    { "id": "Load_terms", "connector": "SharePoint - Get items", "list": "PLEX_TermLists", "note": "Group by ListName into an object of arrays" },
+    {
+      "id": "Compose_flags",
+      "type": "Compose",
+      "expressions": {
+        "PL_ALS": "any term in als is a whole-word match in VeteranFlash or SpecialIssues",
+        "PL_BWN": "any term in bwn is contained in VeteranFlash, SpecialIssues or SpecialMission",
+        "PL_Homeless": "any term in homeless is contained in VeteranFlash",
+        "PL_Terminal": "any term in terminal is contained in VeteranFlash",
+        "PL_PurpleHeartOriginal": "EPCode in ('110','010') AND any purpleHeart term in VeteranFlash or SpecialIssues",
+        "PL_AttyFee": "EPClaimLabel = 'Attorney Fee Memo' OR any attyFee term in VeteranFlash",
+        "PL_Backlog": "DaysPending > int(PLEX_Config.BacklogDays)",
+        "PL_Sensitive": "'7' if VeteranFlash contains 'Employee Claim'; else '6' if it matches @sensitive; else '0'"
+      }
+    },
+    {
+      "id": "Compute_bucket",
+      "type": "Compose",
+      "expression": "if(or(PL_ALS,PL_PurpleHeartOriginal,PL_Terminal,PL_Homeless),1, if(PL_Backlog,2, if(PL_BWN,3, if(equals(PL_assignmentStatus,'AwardCorrection'),4, if(PL_AttyFee,5,6)))))",
+      "note": "First match wins, so each claim has exactly one bucket."
+    },
+    {
+      "id": "Update_assignment",
+      "connector": "SharePoint - Update item (only when a value changed, to avoid trigger loops)",
+      "set": ["PL_ALS", "PL_BWN", "PL_Homeless", "PL_Terminal", "PL_PurpleHeartOriginal", "PL_AttyFee", "PL_Backlog", "PL_Sensitive", "PL_Bucket", "DateOfClaim", "DaysPending"]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+
+"PL_text":        { "$ref": "#/$defs/nullableString",      "description": "Free text" },
+"PL_count":       { "$ref": "#/$defs/nullableInteger",     "description": "Whole number" },
+"PL_amount":      { "type": ["number", "null"],            "description": "Decimal number" },
+"PL_flag":        { "$ref": "#/$defs/nullableBoolean",     "description": "true/false" },
+"PL_date":        { "$ref": "#/$defs/nullableDate",        "description": "Date only (ISO 8601)" },
+"PL_dateTime":    { "type": ["string", "null"], "format": "date-time", "description": "Date and time (ISO 8601)" },
+"PL_tags":        { "$ref": "#/$defs/nullableStringArray", "description": "List of strings" },
+"PL_status":      { "type": ["string", "null"], "enum": ["Open", "Closed", null], "description": "Fixed set of values" },
+"PL_details": {
+  "type": ["object", "null"],
+  "properties": {
+    "note":     { "$ref": "#/$defs/nullableString" },
+    "reviewed": { "$ref": "#/$defs/nullableBoolean" }
+  },
+  "description": "Nested object"
+}

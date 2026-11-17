@@ -1,0 +1,132 @@
+openapi: 3.0.1
+info:
+  title: PLEX Claim Flows
+  description: Power Automate flows that pick the next PLEX claim and apply assignment status transitions.
+  version: 1.0.0
+servers:
+  - url: https://REPLACE-WITH-FLOW-HOST.invalid/plex
+paths:
+  /pickNextClaim:
+    post:
+      operationId: pickNextClaim
+      summary: Get the next claim (GAP or AUTH) for the user
+      description: Runs the PickNextClaim flow. Walks buckets 1 to 6 in order and assigns the first eligible claim to the requesting user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userEmail, userDisplayName, phase]
+              properties:
+                userEmail:
+                  type: string
+                  description: Email address of the person requesting a claim.
+                userDisplayName:
+                  type: string
+                  description: Display name of the person requesting a claim.
+                phase:
+                  type: string
+                  enum: [gap, auth]
+                  description: Kind of work requested. gap for GAP, auth for AUTH.
+      responses:
+        "200":
+          description: The assigned claim, or found=false when none is eligible.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimResult"
+  /transitionStatus:
+    post:
+      operationId: transitionStatus
+      summary: Apply a status transition card to a claim assignment
+      description: Runs the TransitionStatus flow. Only transitions allowed by the assignmentStatus state machine succeed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assignmentId, card, userEmail]
+              properties:
+                assignmentId:
+                  type: string
+                  description: Assignment id returned by pickNextClaim.
+                card:
+                  type: string
+                  enum:
+                    - ReturnToRVSR
+                    - CorrectionComplete
+                    - ReturnForAwardCorrection
+                    - Authorize
+                    - ConcurApproved
+                    - ConcurDenied
+                    - ContinueAtAuth
+                    - ExcludeClaim
+                  description: The transition to apply.
+                requiresConcurrence:
+                  type: boolean
+                  description: Required for Authorize. true sends the claim to PendingConcur, false closes it.
+                excludeReason:
+                  type: string
+                  description: Required for ExcludeClaim. Why the claim is excluded from the queue.
+                userEmail:
+                  type: string
+                  description: Email address of the person applying the transition.
+      responses:
+        "200":
+          description: The claim after the transition, or an error when the transition is not allowed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransitionResult"
+components:
+  schemas:
+    ClaimResult:
+      type: object
+      properties:
+        found:
+          type: boolean
+          description: Whether an eligible claim was found.
+        claimId:
+          type: string
+          description: Claim id.
+        assignmentId:
+          type: string
+          description: Assignment id used for status transitions.
+        bucket:
+          type: integer
+          description: Priority bucket 1 to 6.
+        bucketLabel:
+          type: string
+          description: Bucket description.
+    TransitionResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Whether the transition was applied.
+        message:
+          type: string
+          description: Error detail when success is false.
+        claimId:
+          type: string
+          description: Claim id.
+        assignmentId:
+          type: string
+          description: Assignment id.
+        card:
+          type: string
+          description: Transition that was applied.
+        previousStatus:
+          type: string
+          description: Status before the transition.
+        newStatus:
+          type: string
+          description: Status after the transition.
+        bucket:
+          type: integer
+          description: Priority bucket 1 to 6 after re-enrichment.
+        bucketLabel:
+          type: string
+          description: Bucket description.

@@ -1,0 +1,87 @@
+{
+  "version": "1.1.0",
+
+  "fields": {
+    "PL_Excluded": {
+      "source": "flow",
+      "writers": ["card:ExcludeClaim"],
+      "targets": ["PL_Excluded", "PL_ExcludedReason"],
+      "onIngest": "$keep",
+      "initial": [null, null]
+    },
+
+    "PL_reworkIndicated": {
+      "source": "flow",
+      "writers": ["stateMachine:PL_assignmentStatus"],
+      "onIngest": "$keep",
+      "initial": null
+    },
+
+    "PL_reworkCount": {
+      "source": "flow",
+      "writers": ["stateMachine:PL_assignmentStatus"],
+      "onIngest": "$keep",
+      "initial": null
+    },
+
+    "PL_currentStatusTime": {
+      "source": "flow",
+      "writers": ["stateMachine:PL_assignmentStatus"],
+      "description": "Timestamp of the last PL_assignmentStatus change",
+      "onIngest": "$keep",
+      "initial": null
+    },
+
+    "PL_assignmentStatus": {
+      "source": "stateMachine",
+      "machine": "assignmentStatus",
+      "onIngest": "applyIngestionTransitions",
+      "initial": null
+    }
+  },
+
+  "stateMachines": {
+    "assignmentStatus": {
+      "skipIngestionWhen": { "field": "PL_Excluded", "equals": true },
+
+      "states": {
+        "PendingAward":    { "label": "Pending Award" },
+        "RVSRCorrection":  { "label": "RVSR Correction",  "isRework": true },
+        "PendingAuth":     { "label": "Pending Authorization" },
+        "AwardCorrection": { "label": "Award Correction", "isRework": true },
+        "PendingConcur":   { "label": "Pending Concurrence" },
+        "ContinuedAtAuth": { "label": "Continued at Authorization" },
+        "Closed":          { "label": "Closed", "terminal": true }
+      },
+
+      "onEnter": {
+        "*":         { "set": { "PL_currentStatusTime": "$now" }, "appendHistory": true },
+        "isRework":  { "set": { "PL_reworkIndicated": true }, "increment": { "PL_reworkCount": 1 } }
+      },
+
+      "transitions": [
+        { "from": null,              "to": "PendingAward",    "by": ["ingestion"], "when": { "field": "lifecyclePhase", "equals": "Awaiting Award" } },
+        { "from": null,              "to": "PendingAuth",     "by": ["ingestion"], "when": { "field": "lifecyclePhase", "equals": "Awaiting Authorization" } },
+        { "from": "PendingAward",    "to": "PendingAuth",     "by": ["ingestion", "flow"], "when": { "field": "lifecyclePhase", "equals": "Awaiting Authorization" } },
+
+        { "from": "PendingAward",    "to": "RVSRCorrection",  "by": ["flow"], "card": "ReturnToRVSR" },
+        { "from": "PendingAuth",     "to": "RVSRCorrection",  "by": ["flow"], "card": "ReturnToRVSR" },
+        { "from": "RVSRCorrection",  "to": "PendingAward",    "by": ["flow"], "card": "CorrectionComplete" },
+
+        { "from": "PendingAuth",     "to": "AwardCorrection", "by": ["flow"], "card": "ReturnForAwardCorrection" },
+        { "from": "AwardCorrection", "to": "PendingAuth",     "by": ["flow"], "card": "CorrectionComplete" },
+
+        { "from": "PendingAuth",     "to": "PendingConcur",   "by": ["flow"], "card": "RequestConcurrence" },
+        { "from": "PendingConcur",   "to": "PendingAuth",     "by": ["flow"], "card": "ConcurDenied" },
+        { "from": "PendingConcur",   "to": "Closed",          "by": ["flow"], "card": "ConcurApproved" },
+
+        { "from": "PendingAuth",     "to": "ContinuedAtAuth", "by": ["flow"], "card": "ContinueAtAuth" },
+        { "from": "ContinuedAtAuth", "to": "PendingAuth",     "by": ["flow"], "card": "Resume" },
+        { "from": "ContinuedAtAuth", "to": "Closed",          "by": ["flow"], "card": "Authorize" },
+
+        { "from": "PendingAuth",     "to": "Closed",          "by": ["flow"], "card": "Authorize" },
+        { "from": "*",               "to": "Closed",          "by": ["ingestion"], "when": { "state": "missing" } }
+      ]
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "name": "PLEX - Transition Status",
+  "description": "Applies the card-driven transitions in rulesv1.2.json stateMachines.assignmentStatus. Called by the Power App and by the agent's adaptive cards.",
+  "trigger": {
+    "type": "Request (When an agent calls the flow)",
+    "inputs": { "assignmentId": "string", "card": "ReturnToRVSR | CorrectionComplete | ReturnForAwardCorrection | Authorize | ConcurApproved | ConcurDenied | ContinueAtAuth | ExcludeClaim", "requiresConcurrence": "boolean", "excludeReason": "string", "userEmail": "string" }
+  },
+  "outputs": { "success": "boolean", "message": "string", "claimId": "string", "assignmentId": "string", "card": "string", "previousStatus": "string", "newStatus": "string", "bucket": "number", "bucketLabel": "string" },
+  "actions": [
+    { "id": "Get_assignment", "connector": "SharePoint - Get item", "list": "PLEX_ClaimAssignments" },
+    {
+      "id": "Lookup_transition",
+      "type": "Switch on (current PL_assignmentStatus, card)",
+      "table": [
+        ["PendingAward",    "ReturnToRVSR",             "RVSRCorrection"],
+        ["PendingAuth",     "ReturnToRVSR",             "RVSRCorrection"],
+        ["RVSRCorrection",  "CorrectionComplete",       "PendingAward"],
+        ["PendingAuth",     "ReturnForAwardCorrection", "AwardCorrection"],
+        ["AwardCorrection", "CorrectionComplete",       "PendingAuth"],
+        ["PendingAuth",     "Authorize",                "PendingConcur if requiresConcurrence else Closed"],
+        ["PendingConcur",   "ConcurApproved",           "Closed"],
+        ["PendingConcur",   "ConcurDenied",             "PendingAuth"],
+        ["PendingConcur",   "ReturnToRVSR",             "RVSRCorrection"],
+        ["PendingConcur",   "ReturnForAwardCorrection", "AwardCorrection"],
+        ["PendingAuth",     "ContinueAtAuth",           "ContinuedAtAuth"]
+      ],
+      "default": "Respond with an error: transition not allowed"
+    },
+    {
+      "id": "Apply",
+      "connector": "SharePoint - Update item",
+      "set": {
+        "PL_assignmentStatus": "<to>",
+        "PL_currentStatusTime": "@utcNow()",
+        "PL_reworkIndicated": "true when <to> is RVSRCorrection or AwardCorrection",
+        "PL_reworkCount": "+1 when <to> is RVSRCorrection or AwardCorrection"
+      }
+    },
+    {
+      "id": "Record_owners_of_record",
+      "description": "On first GAP completion stamp PL_GAPerOfRecord and PL_GappedByTeam. On Authorize stamp PL_AuthOfRecord and PL_AuthByTeam. AwardCorrection (bucket 4) routes back to these people.",
+      "connector": "SharePoint - Update item"
+    },
+    { "id": "Re-run_enrich", "description": "Enrich recomputes PL_Bucket because AwardCorrection moves a claim to bucket 4" },
+    { "id": "Append_history", "connector": "SharePoint - Create item", "list": "PLEX_StatusHistory" },
+    { "id": "ExcludeClaim_branch", "description": "card = ExcludeClaim sets PL_Excluded = true and PL_ExcludedReason; no state change" }
+  ]
+}

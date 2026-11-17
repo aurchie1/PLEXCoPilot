@@ -1,0 +1,31 @@
+{
+    "type": "AdaptiveCard",
+    "$schema": "https://adaptivecards.io/schemas/adaptive-card.json",
+    "version": "1.5",
+    "body": [
+        {
+            "type": "TextBlock",
+            "text": "${if(success, card + ' applied', 'Transition not applied')}",
+            "weight": "Bolder",
+            "size": "Medium",
+            "color": "${if(success, 'Good', 'Attention')}",
+            "wrap": true
+        },
+        {
+            "type": "TextBlock",
+            "$when": "${!success}",
+            "text": "${message}",
+            "wrap": true
+        },
+        {
+            "type": "FactSet",
+            "$when": "${success}",
+            "facts": [
+                { "title": "Claim", "value": "${claimId}" },
+                { "title": "Assignment", "value": "${assignmentId}" },
+                { "title": "Status", "value": "${previousStatus} -> ${newStatus}" },
+                { "title": "Bucket", "value": "${bucket} - ${bucketLabel}" }
+            ]
+        }
+    ]
+}

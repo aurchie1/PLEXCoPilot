@@ -1,0 +1,59 @@
+{
+    "$schema": "https://developer.microsoft.com/json-schemas/copilot/plugin/v2.4/schema.json",
+    "schema_version": "v2.4",
+    "name_for_human": "PLEX Claim Flows",
+    "description_for_human": "Power Automate flows that pick the next PLEX claim and apply assignment status transitions.",
+    "description_for_model": "Use pickNextClaim to assign the next GAP or AUTH claim to the user. Use transitionStatus to move a claim through the assignment status state machine with one of the eight cards.",
+    "contact_email": "publisher-email@example.com",
+    "namespace": "agent",
+    "capabilities": {},
+    "functions": [
+        {
+            "name": "pickNextClaim",
+            "description": "Runs the PickNextClaim flow. Walks buckets 1 to 6 in order and assigns the first eligible claim to the requesting user.",
+            "capabilities": {
+                "response_semantics": {
+                    "data_path": "$",
+                    "properties": {
+                        "title": "$.bucketLabel",
+                        "subtitle": "$.claimId"
+                    },
+                    "static_template": {
+                        "file": "adaptiveCards/pickNextClaim1.json"
+                    }
+                }
+            }
+        },
+        {
+            "name": "transitionStatus",
+            "description": "Runs the TransitionStatus flow. Only transitions allowed by the assignmentStatus state machine succeed.",
+            "capabilities": {
+                "response_semantics": {
+                    "data_path": "$",
+                    "properties": {
+                        "title": "$.card",
+                        "subtitle": "$.newStatus"
+                    },
+                    "static_template": {
+                        "file": "adaptiveCards/transitionStatus1.json"
+                    }
+                }
+            }
+        }
+    ],
+    "runtimes": [
+        {
+            "type": "OpenApi",
+            "auth": {
+                "type": "None"
+            },
+            "spec": {
+                "url": "apiSpecificationFile/openapi.yaml"
+            },
+            "run_for_functions": [
+                "pickNextClaim",
+                "transitionStatus"
+            ]
+        }
+    ]
+}
